@@ -3,95 +3,135 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mars Habitat Dashboard</title>
+  <title>Mars Habitat - Mission Control</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 30px;
-      background-color: #f4f4f4;
-      color: #222;
-    }
+    :root { --mars-red: #e27b58; --space-gray: #2d2d2d; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background-color: #1a1a1a; color: #eee; }
+    header { background: var(--mars-red); padding: 20px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+    .container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+    .card { background: var(--space-gray); border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    h2 { border-bottom: 2px solid var(--mars-red); padding-bottom: 10px; margin-top: 0; }
+    
+    /* Form Styling */
+    .rule-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    input, select, button { padding: 10px; border-radius: 4px; border: none; }
+    button { background: var(--mars-red); color: white; cursor: pointer; font-weight: bold; transition: 0.3s; }
+    button:hover { background: #c65a39; }
 
-    h1 {
-      margin-bottom: 30px;
-    }
-
-    .section {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-
-    pre {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      background: #f8f8f8;
-      padding: 15px;
-      border-radius: 8px;
-      overflow-x: auto;
-    }
+    /* Data Display */
+    pre { background: #000; padding: 15px; border-radius: 5px; color: #0f0; overflow-x: auto; font-size: 14px; border: 1px solid #333; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    .status-ok { color: #4caf50; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Mars Habitat Dashboard</h1>
 
-  <div class="section">
-    <h2>Latest Sensor State</h2>
-    <pre id="sensor-state">Loading...</pre>
+<header>
+  <h1>MARS OPERATIONS: MISSION CONTROL</h1>
+  <p>Habitat Automation Stack v1.0 | <span class="status-ok">SYSTEM ONLINE</span></p>
+</header>
+
+<div class="container">
+  
+  <div class="card">
+    <h2>Add Automation Rule</h2>
+    <div class="rule-form">
+      <input type="text" id="sensor_id" placeholder="Sensor (e.g. greenhouse_temperature)">
+      <input type="text" id="metric" placeholder="Metric (e.g. temperature_c)">
+      <select id="operator">
+        <option value=">">></option>
+        <option value="<"><</option>
+        <option value="=">=</option>
+        <option value=">=">>=</option>
+        <option value="<="><=</option>
+      </select>
+      <input type="number" id="threshold" placeholder="Threshold">
+      <input type="text" id="actuator" placeholder="Actuator (e.g. cooling_fan)">
+      <select id="state">
+        <option value="ON">ON</option>
+        <option value="OFF">OFF</option>
+      </select>
+      <button onclick="addRule()">DEPLOY RULE</button>
+    </div>
   </div>
 
-  <div class="section">
-    <h2>Rules</h2>
-    <pre id="rules">Loading...</pre>
+  <div class="grid">
+    <div class="card">
+      <h2>Live Telemetry</h2>
+      <pre id="sensor-state">Loading telemetry...</pre>
+    </div>
+
+    <div class="card">
+      <h2>Actuator Status</h2>
+      <pre id="actuators">Checking actuators...</pre>
+    </div>
   </div>
 
-  <div class="section">
-    <h2>Actuators</h2>
-    <pre id="actuators">Loading...</pre>
+  <div class="card">
+    <h2>Active Automation Rules</h2>
+    <pre id="rules">No active rules found.</pre>
   </div>
 
-  <script>
-    async function fetchJson(url) {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Request failed: ${url} (${response.status})`);
-      }
-      return response.json();
+</div>
+
+<script>
+  const RULE_ENGINE_URL = "http://localhost:8001";
+  const INGESTION_URL = "http://localhost:8000";
+
+  async function fetchJson(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed: ${response.status}`);
+    return response.json();
+  }
+
+  // CREATE RULE (Requirement 5.2)
+  async function addRule() {
+    const rule = {
+      sensor_id: document.getElementById('sensor_id').value,
+      metric: document.getElementById('metric').value,
+      operator: document.getElementById('operator').value,
+      threshold: parseFloat(document.getElementById('threshold').value),
+      actuator: document.getElementById('actuator').value,
+      state: document.getElementById('state').value
+    };
+
+    try {
+      await fetch(`${RULE_ENGINE_URL}/rules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rule)
+      });
+      alert("Rule deployed to Mars successfully!");
+      loadDashboard();
+    } catch (e) {
+      alert("Comm link failure: " + e.message);
     }
+  }
 
-    async function loadData() {
-      try {
-        const sensorState = await fetchJson("http://localhost:8000/latest-state");
-        document.getElementById("sensor-state").textContent =
-          JSON.stringify(sensorState, null, 2);
-      } catch (error) {
-        document.getElementById("sensor-state").textContent =
-          "Error loading sensor state:\n" + error.message;
-      }
+  async function loadDashboard() {
+    // 1. Load Latest Sensor States (Requirement 5.3)
+    try {
+      const state = await fetchJson(`${INGESTION_URL}/latest-state`);
+      document.getElementById("sensor-state").textContent = JSON.stringify(state, null, 2);
+    } catch (e) { document.getElementById("sensor-state").textContent = "Error: " + e.message; }
 
-      try {
-        const rules = await fetchJson("http://localhost:8001/rules");
-        document.getElementById("rules").textContent =
-          JSON.stringify(rules, null, 2);
-      } catch (error) {
-        document.getElementById("rules").textContent =
-          "Error loading rules:\n" + error.message;
-      }
+    // 2. Load Persisted Rules (Requirement 4.1)
+    try {
+      const rules = await fetchJson(`${RULE_ENGINE_URL}/rules`);
+      document.getElementById("rules").textContent = JSON.stringify(rules, null, 2);
+    } catch (e) { document.getElementById("rules").textContent = "Error: " + e.message; }
 
-      try {
-        const actuators = await fetchJson("http://localhost:8001/actuators");
-        document.getElementById("actuators").textContent =
-          JSON.stringify(actuators, null, 2);
-      } catch (error) {
-        document.getElementById("actuators").textContent =
-          "Error loading actuators:\n" + error.message;
-      }
-    }
+    // 3. Load Actuator States
+    try {
+      const act = await fetchJson(`${RULE_ENGINE_URL}/actuators`);
+      document.getElementById("actuators").textContent = JSON.stringify(act, null, 2);
+    } catch (e) { document.getElementById("actuators").textContent = "Error: " + e.message; }
+  }
 
-    loadData();
-    setInterval(loadData, 5000);
-  </script>
+  // Refresh every 5 seconds per mission briefing [cite: 53]
+  setInterval(loadDashboard, 5000);
+  loadDashboard();
+</script>
 </body>
 </html>

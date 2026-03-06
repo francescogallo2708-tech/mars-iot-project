@@ -179,4 +179,33 @@ def get_latest_state():
     return latest_sensor_state
 
 
+import stomp # You will need 'stomp.py' in your requirements.txt
+import json
+import time
+from threading import Thread
 
+# ... your existing FastAPI code ...
+
+def publish_to_broker(event_data):
+    try:
+        conn = stomp.Connection([('broker', 61613)])
+        conn.connect('admin', 'admin', wait=True)
+        conn.send(body=json.dumps(event_data), destination='/topic/mars.telemetry')
+        conn.disconnect()
+    except Exception as e:
+        print(f"Broker error: {e}")
+
+# Background task to poll and push
+def background_ingestion():
+    while True:
+        try:
+            # Reusing your existing normalization logic
+            data = get_normalized_sensor_data()
+            for event in data:
+                publish_to_broker(event)
+            time.sleep(5) # Default publish interval is 5s [cite: 53]
+        except Exception as e:
+            print(f"Ingestion loop error: {e}")
+
+# Start the thread when the app starts
+Thread(target=background_ingestion, daemon=True).start()

@@ -5,6 +5,17 @@ services:
     ports:
       - "8080:8080"
 
+  broker:
+    image: apache/activemq-artemis:latest-alpine
+    container_name: mars-broker
+    ports:
+      - "61613:61613"
+      - "8161:8161"
+    environment:
+      - AMQ_USER=admin
+      - AMQ_PASSWORD=admin
+      - ANONYMOUS_LOGIN=true
+
   ingestion-service:
     build: ./source/ingestion-service
     container_name: ingestion-service
@@ -12,6 +23,7 @@ services:
       - "8000:8000"
     depends_on:
       - simulator
+      - broker
 
   rule-engine:
     build: ./source/rule-engine
@@ -19,8 +31,10 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      - ingestion-service
+      - broker
       - simulator
+    volumes:
+      - ./rules_data:/app/data
 
   frontend:
     build: ./source/frontend

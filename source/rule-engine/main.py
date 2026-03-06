@@ -1,9 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import requests
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.orm import declarative_base, sessionmaker
+import stomp
+import json
+from threading import Thread
 
 app = FastAPI()
 
+# --- 1. CONFIGURATION & MIDDLEWARE ---
+# Enable CORS so your frontend at localhost:3000 can talk to this service
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,78 +19,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-INGESTION_SERVICE_URL = "http://ingestion-service:8000"
-
-@app.get("/")
-def root():
-    return {"message": "Rule engine is running"}
-
-
-@app.get("/normalized-events")
-def get_normalized_events():
-    response = requests.get(f"{INGESTION_SERVICE_URL}/normalized-sensor-data")
-    return response.json()
-
-@app.get("/evaluate-rules")
-@app.get("/evaluate-rules")
-@app.get("/evaluate-rules")
-def evaluate_rules():
-    response = requests.get(f"{INGESTION_SERVICE_URL}/normalized-sensor-data")
-    events = response.json()
-
-    db = SessionLocal()
-    rules = db.query(Rule).all()
-
-    triggered_actions = []
-
-    for event in events:
-        for rule in rules:
-            if event["sensor_id"] == rule.sensor_id and event["metric"] == rule.metric:
-                condition_met = False
-
-                if rule.operator == ">":
-                    condition_met = event["value"] > rule.threshold
-                elif rule.operator == "<":
-                    condition_met = event["value"] < rule.threshold
-                elif rule.operator == ">=":
-                    condition_met = event["value"] >= rule.threshold
-                elif rule.operator == "<=":
-                    condition_met = event["value"] <= rule.threshold
-                elif rule.operator == "=":
-                    condition_met = event["value"] == rule.threshold
-
-                if condition_met:
-                    actuator_response = requests.post(
-                        f"http://simulator:8080/api/actuators/{rule.actuator}",
-                        json={"state": rule.state}
-                    )
-
-                    triggered_actions.append({
-                        "rule_id": rule.id,
-                        "rule": f"IF {rule.sensor_id} {rule.operator} {rule.threshold} THEN {rule.actuator} = {rule.state}",
-                        "action": {
-                            "actuator": rule.actuator,
-                            "state": rule.state
-                        },
-                        "event": event,
-                        "actuator_result": actuator_response.json()
-                    })
-
-    return triggered_actions
-
-from sqlalchemy import create_engine, Column, Integer, String, Float
-from sqlalchemy.orm import declarative_base, sessionmaker
-
+# --- 2. DATABASE SETUP (Requirement 4.1: Persistence) ---
+# This ensures your automation rules survive a container restart
 DATABASE_URL = "sqlite:///rules.db"
-
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
-
 Base = declarative_base()
 
 class Rule(Base):
     __tablename__ = "rules"
-
     id = Column(Integer, primary_key=True, index=True)
     sensor_id = Column(String)
     metric = Column(String)
@@ -94,11 +38,69 @@ class Rule(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# --- 3. BROKER LISTENER (Requirement 6: Event-Driven Architecture) ---
+# This listener reacts instantly when the Ingestion Service pushes data to the broker 
+class RuleEngineListener(stomp.ConnectionListener):
+    def on_message(self, frame):
+        try:
+            # 1. Parse the Unified Internal Event from the broker
+            event = json.loads(frame.body)
+            sensor_id = event.get("sensor_id")
+            value = event.get("value")
+            
+            print(f"DEBUG: Processing event from {sensor_id}: {value}")
+
+            # 2. Query the database for rules matching this sensor
+            db = SessionLocal()
+            rules = db.query(Rule).filter(Rule.sensor_id == sensor_id).all()
+
+            for rule in rules:
+                condition_met = False
+                
+                # 3. Evaluate the IF-THEN logic
+                if rule.operator == ">": condition_met = value > rule.threshold
+                elif rule.operator == "<": condition_met = value < rule.threshold
+                elif rule.operator == ">=": condition_met = value >= rule.threshold
+                elif rule.operator == "<=": condition_met = value <= rule.threshold
+                elif rule.operator == "=": condition_met = value == rule.threshold
+
+                if condition_met:
+                    print(f"CRITICAL: Triggering {rule.actuator} to {rule.state}")
+                    # 4. Invoke the Actuator REST API in the simulator
+                    requests.post(
+                        f"http://simulator:8080/api/actuators/{rule.actuator}",
+                        json={"state": rule.state}
+                    )
+            db.close()
+        except Exception as e:
+            print(f"Error in Rule Listener: {e}")
+
+def start_broker_subscriber():
+    """Connects to the broker and starts listening in the background."""
+    try:
+        # 'broker' is the service name defined in your docker-compose.yml
+        conn = stomp.Connection([('broker', 61613)])
+        conn.set_listener('', RuleEngineListener())
+        conn.connect('admin', 'admin', wait=True)
+        # Subscribe to the topic used by the ingestion service
+        conn.subscribe(destination='/topic/mars.telemetry', id=1, ack='auto')
+        print("Rule Engine is successfully listening to the Broker.")
+    except Exception as e:
+        print(f"Failed to connect to broker: {e}")
+
+# Start the background thread so FastAPI can still handle web requests
+Thread(target=start_broker_subscriber, daemon=True).start()
+
+# --- 4. REST API ENDPOINTS (Requirement 5.3: Frontend Dashboard) ---
+
+@app.get("/")
+def root():
+    return {"message": "Rule Engine is running and listening to the broker."}
+
 @app.post("/rules")
 def create_rule(rule: dict):
-
+    """Adds a new rule to the persistent SQLite database."""
     db = SessionLocal()
-
     new_rule = Rule(
         sensor_id=rule["sensor_id"],
         metric=rule["metric"],
@@ -107,22 +109,25 @@ def create_rule(rule: dict):
         actuator=rule["actuator"],
         state=rule["state"]
     )
-
     db.add(new_rule)
     db.commit()
     db.refresh(new_rule)
-
+    db.close()
     return new_rule
 
 @app.get("/rules")
 def get_rules():
-
+    """Returns all persisted rules for the dashboard."""
     db = SessionLocal()
     rules = db.query(Rule).all()
-
+    db.close()
     return rules
 
 @app.get("/actuators")
 def get_actuators():
-    response = requests.get("http://simulator:8080/api/actuators")
-    return response.json()
+    """Proxy request to see current actuator states from the simulator."""
+    try:
+        response = requests.get("http://simulator:8080/api/actuators")
+        return response.json()
+    except:
+        return {"error": "Simulator unreachable"}
