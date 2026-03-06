@@ -1,7 +1,16 @@
 from fastapi import FastAPI
 import requests
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 INGESTION_SERVICE_URL = "http://ingestion-service:8000"
 
@@ -113,3 +122,7 @@ def get_rules():
 
     return rules
 
+@app.get("/actuators")
+def get_actuators():
+    response = requests.get("http://simulator:8080/api/actuators")
+    return response.json()

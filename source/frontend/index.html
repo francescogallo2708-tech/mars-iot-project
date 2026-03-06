@@ -4,28 +4,90 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mars Habitat Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      background-color: #f4f4f4;
+      color: #222;
+    }
+
+    h1 {
+      margin-bottom: 30px;
+    }
+
+    .section {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: #f8f8f8;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+  </style>
 </head>
 <body>
   <h1>Mars Habitat Dashboard</h1>
 
-  <h2>Latest Sensor State</h2>
-  <pre id="sensor-state">Loading...</pre>
+  <div class="section">
+    <h2>Latest Sensor State</h2>
+    <pre id="sensor-state">Loading...</pre>
+  </div>
 
-  <h2>Rules</h2>
-  <pre id="rules">Loading...</pre>
+  <div class="section">
+    <h2>Rules</h2>
+    <pre id="rules">Loading...</pre>
+  </div>
 
-  <h2>Actuators</h2>
-  <pre id="actuators">Loading...</pre>
+  <div class="section">
+    <h2>Actuators</h2>
+    <pre id="actuators">Loading...</pre>
+  </div>
 
   <script>
-    async function loadData() {
-      const sensorState = await fetch("http://localhost:8000/latest-state").then(r => r.json());
-      const rules = await fetch("http://localhost:8001/rules").then(r => r.json());
-      const actuators = await fetch("http://localhost:8001/actuators").then(r => r.json());
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Request failed: ${url} (${response.status})`);
+      }
+      return response.json();
+    }
 
-      document.getElementById("sensor-state").textContent = JSON.stringify(sensorState, null, 2);
-      document.getElementById("rules").textContent = JSON.stringify(rules, null, 2);
-      document.getElementById("actuators").textContent = JSON.stringify(actuators, null, 2);
+    async function loadData() {
+      try {
+        const sensorState = await fetchJson("http://localhost:8000/latest-state");
+        document.getElementById("sensor-state").textContent =
+          JSON.stringify(sensorState, null, 2);
+      } catch (error) {
+        document.getElementById("sensor-state").textContent =
+          "Error loading sensor state:\n" + error.message;
+      }
+
+      try {
+        const rules = await fetchJson("http://localhost:8001/rules");
+        document.getElementById("rules").textContent =
+          JSON.stringify(rules, null, 2);
+      } catch (error) {
+        document.getElementById("rules").textContent =
+          "Error loading rules:\n" + error.message;
+      }
+
+      try {
+        const actuators = await fetchJson("http://localhost:8001/actuators");
+        document.getElementById("actuators").textContent =
+          JSON.stringify(actuators, null, 2);
+      } catch (error) {
+        document.getElementById("actuators").textContent =
+          "Error loading actuators:\n" + error.message;
+      }
     }
 
     loadData();
