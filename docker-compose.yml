@@ -1,0 +1,23 @@
+services:
+  simulator:
+    image: mars-iot-simulator:multiarch_v1
+    container_name: simulator
+    ports:
+      - "8080:8080"
+
+  ingestion-service:
+    build: ./source/ingestion-service
+    container_name: ingestion-service
+    ports:
+      - "8000:8000"
+    depends_on:
+      - simulator
+
+  rule-engine:
+    build: ./source/rule-engine
+    container_name: rule-engine
+    ports:
+      - "8001:8001"
+    depends_on:
+      - ingestion-service
+      - simulator

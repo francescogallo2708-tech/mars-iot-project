@@ -3,7 +3,7 @@ import requests
 
 app = FastAPI()
 
-SIMULATOR_BASE_URL = "http://host.docker.internal:8080"
+SIMULATOR_BASE_URL = "http://simulator:8080"
 
 
 @app.get("/")
