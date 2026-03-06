@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mars Habitat Dashboard</title>
+</head>
+<body>
+  <h1>Mars Habitat Dashboard</h1>
+
+  <h2>Latest Sensor State</h2>
+  <pre id="sensor-state">Loading...</pre>
+
+  <h2>Rules</h2>
+  <pre id="rules">Loading...</pre>
+
+  <h2>Actuators</h2>
+  <pre id="actuators">Loading...</pre>
+
+  <script>
+    async function loadData() {
+      const sensorState = await fetch("http://localhost:8000/latest-state").then(r => r.json());
+      const rules = await fetch("http://localhost:8001/rules").then(r => r.json());
+      const actuators = await fetch("http://localhost:8001/actuators").then(r => r.json());
+
+      document.getElementById("sensor-state").textContent = JSON.stringify(sensorState, null, 2);
+      document.getElementById("rules").textContent = JSON.stringify(rules, null, 2);
+      document.getElementById("actuators").textContent = JSON.stringify(actuators, null, 2);
+    }
+
+    loadData();
+    setInterval(loadData, 5000);
+  </script>
+</body>
+</html>
